@@ -1,0 +1,50 @@
+import os
+import requests
+
+datahub_api_endpoint = ""  
+
+
+from minio import Minio
+minio_client = Minio("<minio_host>:<minio_port>", access_key="<>", secret_key="<>", secure=False)  
+
+
+minio_bucket = "my-bucket"
+minio_prefix = "data/"
+
+def process_file(file_path):
+    dataset_name = os.path.basename(file_path)
+
+    with open(file_path, "rb") as file:
+        response = requests.post(
+            f"{datahub_api_endpoint}/datasets/{dataset_name}/documents",
+            files={"file": file}
+        )
+        if response.status_code == 201:
+            print(f"File {file_path} uploaded successfully.")
+        else:
+            print(f"Failed to upload file {file_path}. Error: {response.text}")
+
+    metadata = {
+        "name": dataset_name,
+        "description": "Dataset imported from MinIO"
+    }
+    response = requests.put(
+        f"{datahub_api_endpoint}/datasets/{dataset_name}",
+        json=metadata
+    )
+    if response.status_code == 200:
+        print(f"Metadata updated for dataset {dataset_name}.")
+    elif response.status_code == 201:
+        print(f"Dataset {dataset_name} created with metadata.")
+    else:
+        print(f"Failed to update metadata for dataset {dataset_name}. Error: {response.text}")
+
+def handle_minio_event(event):
+    file_path = event.object_name
+    process_file(file_path)
+
+def monitor_minio():
+    for event in minio_client.listen_bucket_notification(minio_bucket, prefix=minio_prefix):
+        handle_minio_event(event)
+
+monitor_minio()
